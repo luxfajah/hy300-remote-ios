@@ -4,6 +4,7 @@ import SwiftUI
 /// Left = Keyboard, Center = Device Picker Pill with live status dot, Right = Power.
 struct RemoteTopBar: View {
     let client: ProjectorClient
+    var hasUpdate: Bool = false
     let onToggleKeyboard: () -> Void
     let onOpenDevicePicker: () -> Void
     let onPowerTap: () -> Void
@@ -54,6 +55,12 @@ struct RemoteTopBar: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.labelPrimary)
                             .lineLimit(1)
+                        if hasUpdate {
+                            Circle()
+                                .fill(Color(red: 0.28, green: 0.62, blue: 1.0))
+                                .frame(width: 6, height: 6)
+                                .shadow(color: Color.blue.opacity(0.8), radius: 3)
+                        }
                         Image(systemName: "chevron.down")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(DesignTokens.labelSecondary)

@@ -54,6 +54,8 @@ final class ProjectorClient {
     var latencyMs: Int? = nil
     var lastError: String? = nil
     var activeHUD: HUDMessage? = nil
+    var dockApps: [DockAppItem] = RemoteStorage.savedDockApps()
+    var isKillingBackgroundApps: Bool = false
 
     // MARK: - Private Transport State
     @ObservationIgnored private let ioQueue = DispatchQueue(label: "com.hy300.remote.tcp", qos: .userInteractive)
@@ -64,6 +66,7 @@ final class ProjectorClient {
     @ObservationIgnored private var heartbeatTask: Task<Void, Never>?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     @ObservationIgnored private var hudDismissTask: Task<Void, Never>?
+    @ObservationIgnored private var killBgTimeoutTask: Task<Void, Never>?
 
     @ObservationIgnored private var reconnectAttempt: Int = 0
     @ObservationIgnored private var isUserDisconnected: Bool = false
@@ -268,6 +271,7 @@ final class ProjectorClient {
             lastError = nil
             startReceiveLoop(for: id)
             requestState()
+            requestDockApps()
             sendPing()
             startHeartbeat()
 
@@ -408,8 +412,37 @@ final class ProjectorClient {
                 latencyMs = max(1, Int(nowMs - tsNum.int64Value))
             }
 
+        case "apps":
+            if let rawItems = json["items"] as? [[String: Any]] {
+                applyParsedDockApps(rawItems)
+            }
+
+        case "bg_killed":
+            killBgTimeoutTask?.cancel()
+            killBgTimeoutTask = nil
+            isKillingBackgroundApps = false
+            let count = (json["count"] as? Int) ?? 0
+            HapticEngine.shared.success()
+            let title = count > 0 ? "\(count) apps fechados" : "Apps em 2º plano fechados"
+            showHUD(icon: "checkmark.circle.fill", title: title)
+
         default:
             break
+        }
+    }
+
+    private func applyParsedDockApps(_ rawItems: [[String: Any]]) {
+        let parsed: [DockAppItem] = rawItems.compactMap { item in
+            guard let pkg = item["pkg"] as? String, !pkg.isEmpty else { return nil }
+            let label = (item["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedLabel = (label?.isEmpty == false) ? label! : pkg
+            let color = item["color"] as? String
+            let icon = item["icon"] as? String
+            return DockAppItem(pkg: pkg, label: resolvedLabel, color: color, icon: icon)
+        }
+        if !parsed.isEmpty {
+            dockApps = parsed
+            RemoteStorage.saveDockApps(parsed)
         }
     }
 
@@ -529,6 +562,72 @@ final class ProjectorClient {
             "id": app.rawValue
         ])
         showHUD(icon: app.systemImage, title: "Abrindo \(app.title)")
+    }
+
+    func launchDockApp(_ pkg: String, label: String? = nil) {
+        sendPayload([
+            "t": "app",
+            "id": pkg
+        ])
+        showHUD(icon: "square.grid.2x2.fill", title: "Abrindo \(label ?? pkg)")
+    }
+
+    func requestDockApps() {
+        if connectionState == .connected {
+            sendPayload(["t": "apps"])
+        }
+        if activeTransport == .wifi {
+            Task { [weak self] in
+                await self?.fetchDockAppsHTTP()
+            }
+        }
+    }
+
+    func fetchDockAppsHTTP() async {
+        guard let url = URL(string: "http://\(host):\(httpPort)/api/apps") else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 4
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode) else {
+            return
+        }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let rawItems = json["items"] as? [[String: Any]] {
+            applyParsedDockApps(rawItems)
+        } else if let rawItems = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            applyParsedDockApps(rawItems)
+        }
+    }
+
+    func killBackgroundApps() {
+        guard !isKillingBackgroundApps else { return }
+        isKillingBackgroundApps = true
+        HapticEngine.shared.tapMedium()
+        sendPayload(["t": "kill_bg"])
+
+        killBgTimeoutTask?.cancel()
+        killBgTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, let self, self.isKillingBackgroundApps else { return }
+            self.isKillingBackgroundApps = false
+            HapticEngine.shared.success()
+            self.showHUD(icon: "sparkles", title: "Apps em 2º plano fechados")
+        }
+    }
+
+    func iconURL(for app: DockAppItem) -> URL? {
+        let rawPath: String
+        if let icon = app.icon, !icon.isEmpty {
+            if icon.hasPrefix("http://") || icon.hasPrefix("https://") {
+                return URL(string: icon)
+            }
+            rawPath = icon.hasPrefix("/") ? icon : "/\(icon)"
+        } else {
+            let encodedPkg = app.pkg.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? app.pkg
+            rawPath = "/api/app-icon/\(encodedPkg)"
+        }
+        return URL(string: "http://\(host):\(httpPort)\(rawPath)")
     }
 
     func setResolution(_ preset: ResolutionPreset) {

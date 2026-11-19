@@ -102,6 +102,32 @@ enum ProjectorApp: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Dynamic Projector Dock App Item
+
+struct DockAppItem: Identifiable, Codable, Hashable, Sendable {
+    let pkg: String
+    let label: String
+    let color: String?
+    let icon: String?
+
+    var id: String { pkg }
+
+    var parsedColor: Color {
+        guard let raw = color?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return Color(red: 0.36, green: 0.48, blue: 0.92)
+        }
+        let hex = raw.hasPrefix("#") ? String(raw.dropFirst()) : raw
+        guard hex.count == 6, let value = UInt64(hex, radix: 16) else {
+            return Color(red: 0.36, green: 0.48, blue: 0.92)
+        }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8) & 0xFF) / 255.0
+        let b = Double(value & 0xFF) / 255.0
+        return Color(red: r, green: g, blue: b)
+    }
+}
+
 // MARK: - Resolution Presets
 
 enum ResolutionPreset: String, CaseIterable, Identifiable, Sendable {
@@ -271,6 +297,7 @@ enum RemoteStorage {
     static let padModeKey = "hy300_pad_mode"
     static let lastBluetoothIDKey = "hy300_last_ble_id"
     static let preferredTransportKey = "hy300_preferred_transport"
+    static let dockAppsKey = "hy300_dock_apps"
     static let defaultHost = "192.168.1.7"
 
     static func savedHost() -> String {
@@ -318,5 +345,18 @@ enum RemoteStorage {
 
     static func savePreferredTransport(_ transport: ConnectionTransport) {
         UserDefaults.standard.set(transport.rawValue, forKey: preferredTransportKey)
+    }
+
+    static func savedDockApps() -> [DockAppItem] {
+        guard let data = UserDefaults.standard.data(forKey: dockAppsKey),
+              let items = try? JSONDecoder().decode([DockAppItem].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    static func saveDockApps(_ apps: [DockAppItem]) {
+        guard let data = try? JSONEncoder().encode(apps) else { return }
+        UserDefaults.standard.set(data, forKey: dockAppsKey)
     }
 }

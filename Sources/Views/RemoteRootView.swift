@@ -5,6 +5,7 @@ import SwiftUI
 struct RemoteRootView: View {
     let client: ProjectorClient
     let discovery: BonjourDiscoveryService
+    let updateService: GitHubUpdateService
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,6 +29,7 @@ struct RemoteRootView: View {
                 VStack(spacing: metrics.sectionSpacing) {
                     RemoteTopBar(
                         client: client,
+                        hasUpdate: updateService.hasUpdate,
                         onToggleKeyboard: {
                             withAnimation(.snappy(duration: 0.24)) {
                                 showKeyboard.toggle()
@@ -88,13 +90,17 @@ struct RemoteRootView: View {
             }
         }
         .sheet(isPresented: $showDevicePicker) {
-            DevicePickerSheet(client: client, discovery: discovery)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+            DevicePickerSheet(
+                client: client,
+                discovery: discovery,
+                updateService: updateService
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showQuickApps) {
             QuickAppsSheet(client: client)
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showKeystoneSheet) {
@@ -135,6 +141,7 @@ struct RemoteRootView: View {
             HapticEngine.shared.prepare()
             client.connectDefault()
             discovery.startScan()
+            await updateService.checkForUpdates()
         }
     }
 

@@ -7,8 +7,10 @@ import SwiftUI
 struct DevicePickerSheet: View {
     let client: ProjectorClient
     let discovery: BonjourDiscoveryService
+    let updateService: GitHubUpdateService
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var manualHost: String = ""
 
     var body: some View {
@@ -22,6 +24,7 @@ struct DevicePickerSheet: View {
                         bluetoothSection
                         wifiDiscoveredSection
                         manualConnectSection
+                        githubUpdateSection
                     }
                     .padding(18)
                 }
@@ -417,6 +420,147 @@ struct DevicePickerSheet: View {
                 .hyGlassProminentButton()
                 .tint(.blue)
             }
+        }
+    }
+
+    // MARK: - GitHub OTA Update (SideStore / AltStore / Direct IPA)
+
+    private var githubUpdateSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HStack(spacing: 6) {
+                    Text("ATUALIZAÇÃO VIA GITHUB")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignTokens.labelTertiary)
+
+                    if updateService.hasUpdate {
+                        Circle()
+                            .fill(Color(red: 0.28, green: 0.62, blue: 1.0))
+                            .frame(width: 7, height: 7)
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    HapticEngine.shared.selection()
+                    Task {
+                        await updateService.checkForUpdates()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if updateService.isChecking {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        Text(updateService.isChecking ? "Verificando…" : "Verificar")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(Color(red: 0.38, green: 0.68, blue: 1.0))
+                }
+                .buttonStyle(.plain)
+                .disabled(updateService.isChecking)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(
+                                updateService.hasUpdate
+                                    ? Color.blue.opacity(0.22)
+                                    : Color.white.opacity(0.07)
+                            )
+                            .frame(width: 40, height: 40)
+
+                        Image(systemName: updateService.hasUpdate ? "arrow.down.app.fill" : "checkmark.seal.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(
+                                updateService.hasUpdate
+                                    ? Color(red: 0.38, green: 0.68, blue: 1.0)
+                                    : DesignTokens.statusAwake
+                            )
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        if updateService.hasUpdate, let latest = updateService.latestRelease {
+                            Text("Nova versão v\(latest.version) disponível!")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.labelPrimary)
+                            Text("Instalado: v\(updateService.currentVersion) (build \(updateService.currentBuild))")
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(DesignTokens.labelSecondary)
+                        } else {
+                            Text("HY300 Remote v\(updateService.currentVersion)")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.labelPrimary)
+                            Text(updateService.lastError ?? "Atualizado • build \(updateService.currentBuild)")
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(DesignTokens.labelSecondary)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                if updateService.hasUpdate,
+                   let notes = updateService.latestRelease?.notes,
+                   !notes.isEmpty {
+                    Text(notes)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .lineLimit(3)
+                }
+
+                // 1-Tap iPhone-only OTA Install Buttons
+                VStack(spacing: 8) {
+                    if let sideStoreURL = updateService.sideStoreInstallURL {
+                        Button {
+                            HapticEngine.shared.tapMedium()
+                            openURL(sideStoreURL)
+                        } label: {
+                            Label("Atualizar no SideStore", systemImage: "arrow.down.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
+                        .hyGlassProminentButton()
+                        .tint(.blue)
+                    }
+
+                    HStack(spacing: 8) {
+                        if let altStoreURL = updateService.altStoreInstallURL {
+                            Button {
+                                HapticEngine.shared.tapLight()
+                                openURL(altStoreURL)
+                            } label: {
+                                Label("AltStore", systemImage: "square.and.arrow.down")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 9)
+                            }
+                            .hyGlassButton()
+                        }
+
+                        Button {
+                            HapticEngine.shared.tapLight()
+                            openURL(updateService.directIPAURL)
+                        } label: {
+                            Label("Baixar IPA Direto", systemImage: "safari")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                        }
+                        .hyGlassButton()
+                    }
+                }
+            }
+            .padding(14)
+            .hyGlassRounded(cornerRadius: 20, interactive: false)
         }
     }
 
