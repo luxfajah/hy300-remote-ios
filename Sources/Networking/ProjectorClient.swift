@@ -650,7 +650,7 @@ final class ProjectorClient {
     func openURL(_ raw: String) {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if isConnected {
+        if connectionState == .connected {
             sendPayload([
                 "t": "open_url",
                 "url": trimmed
