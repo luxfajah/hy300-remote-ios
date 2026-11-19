@@ -16,12 +16,12 @@
       "tintColor": "#2D7FF9",
       "versions": [
         {
-          "version": "1.0.6",
-          "buildVersion": "6",
-          "date": "2026-11-19T08:59:01Z",
-          "localizedDescription": "Versão 1.0.6 — Atualização automática via GitHub Releases.",
-          "downloadURL": "https://github.com/luxfajah/hy300-remote-ios/releases/download/v1.0.6/HY300Remote.ipa",
-          "size": 2016031,
+          "version": "1.0.8",
+          "buildVersion": "8",
+          "date": "2026-11-19T11:07:46Z",
+          "localizedDescription": "Versão 1.0.8 — Atualização automática via GitHub Releases.",
+          "downloadURL": "https://github.com/luxfajah/hy300-remote-ios/releases/download/v1.0.8/HY300Remote.ipa",
+          "size": 2023854,
           "minOSVersion": "18.0"
         }
       ]
