@@ -123,14 +123,17 @@ struct RemoteRootView: View {
             client.handleScenePhase(newPhase)
         }
         .onChange(of: discovery.discovered) { _, found in
-            // Auto-adopt discovered projector if currently disconnected
-            if !client.connectionState.isConnected, let first = found.first, first.host != client.host {
+            // Auto-adopt discovered Wi-Fi projector if currently disconnected on Wi-Fi
+            if client.activeTransport == .wifi,
+               !client.connectionState.isConnected,
+               let first = found.first,
+               first.host != client.host {
                 client.connect(to: first.host, tcpPort: first.tcpPort, httpPort: first.httpPort)
             }
         }
         .task {
             HapticEngine.shared.prepare()
-            client.connect(to: client.host)
+            client.connectDefault()
             discovery.startScan()
         }
     }

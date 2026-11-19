@@ -30,7 +30,9 @@ private final class NDJSONLineBuffer: @unchecked Sendable {
     }
 }
 
-/// Persistent low-latency TCP NDJSON client for HY300Pro's native SystemRemoteDaemon (`:8091`).
+/// Dual-transport low-latency remote client for HY300Pro:
+/// - Wi-Fi: Persistent TCP NDJSON (`NWConnection` to `:8091`, `TCP_NODELAY`)
+/// - Bluetooth LE: Direct CoreBluetooth GATT (`A300` / `A301` / `A302`)
 @MainActor
 @Observable
 final class ProjectorClient {
@@ -38,6 +40,8 @@ final class ProjectorClient {
     var host: String
     var tcpPort: UInt16 = 8091
     var httpPort: UInt16 = 8090
+    var activeTransport: ConnectionTransport = RemoteStorage.savedPreferredTransport()
+    let bluetooth = BluetoothRemoteTransport()
 
     var connectionState: ConnectionState = .disconnected
     var deviceName: String = "HY300Pro"
@@ -64,14 +68,60 @@ final class ProjectorClient {
     @ObservationIgnored private var reconnectAttempt: Int = 0
     @ObservationIgnored private var isUserDisconnected: Bool = false
     @ObservationIgnored private var isForeground: Bool = true
+    @ObservationIgnored private var activeBluetoothID: UUID? = RemoteStorage.savedBluetoothPeripheralID()
 
     init(host: String = RemoteStorage.savedHost()) {
         self.host = host
+        setupBluetoothCallbacks()
+    }
+
+    private func setupBluetoothCallbacks() {
+        bluetooth.onConnected = { [weak self] name, peripheralID in
+            guard let self, self.activeTransport == .bluetooth else { return }
+            self.activeBluetoothID = peripheralID
+            self.deviceName = name
+            self.connectionState = .connected
+            self.reconnectAttempt = 0
+            self.lastError = nil
+            self.requestState()
+            self.sendPing()
+            self.startHeartbeat()
+            self.showHUD(icon: "dot.radiowaves.left.and.right", title: "Bluetooth Conectado")
+        }
+
+        bluetooth.onDisconnected = { [weak self] errorMessage in
+            guard let self, self.activeTransport == .bluetooth else { return }
+            self.heartbeatTask?.cancel()
+            self.heartbeatTask = nil
+            self.latencyMs = nil
+            self.lastError = errorMessage
+            if !self.isUserDisconnected {
+                self.connectionState = .disconnected
+                self.scheduleReconnect()
+            }
+        }
+
+        bluetooth.onMessageData = { [weak self] data in
+            guard let self, self.activeTransport == .bluetooth else { return }
+            self.handleIncomingLine(data)
+        }
     }
 
     // MARK: - Connection Lifecycle
 
+    func connectDefault() {
+        if activeTransport == .bluetooth, let bleID = activeBluetoothID ?? RemoteStorage.savedBluetoothPeripheralID() {
+            connectBluetooth(peripheralID: bleID)
+        } else {
+            connect(to: host)
+        }
+    }
+
     func connect(to newHost: String? = nil, tcpPort: UInt16 = 8091, httpPort: UInt16 = 8090) {
+        bluetooth.disconnect()
+        activeTransport = .wifi
+        RemoteStorage.savePreferredTransport(.wifi)
+
         if let newHost {
             let trimmed = newHost.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -85,18 +135,45 @@ final class ProjectorClient {
         self.reconnectAttempt = 0
         self.lastError = nil
 
-        openConnection()
+        openTCPConnection()
+    }
+
+    func connectBluetooth(peripheralID: UUID) {
+        teardownTCPConnection()
+        activeTransport = .bluetooth
+        activeBluetoothID = peripheralID
+        RemoteStorage.savePreferredTransport(.bluetooth)
+        RemoteStorage.saveBluetoothPeripheralID(peripheralID)
+
+        isUserDisconnected = false
+        reconnectAttempt = 0
+        lastError = nil
+        latencyMs = nil
+        connectionState = .connecting
+
+        bluetooth.connect(peripheralID: peripheralID)
     }
 
     func reconnectNow() {
         isUserDisconnected = false
         reconnectAttempt = 0
-        openConnection()
+        switch activeTransport {
+        case .wifi:
+            openTCPConnection()
+        case .bluetooth:
+            if let bleID = activeBluetoothID ?? RemoteStorage.savedBluetoothPeripheralID() {
+                connectionState = .reconnecting
+                bluetooth.connect(peripheralID: bleID)
+            } else {
+                bluetooth.startScan()
+            }
+        }
     }
 
     func disconnect() {
         isUserDisconnected = true
-        teardownConnection()
+        teardownTCPConnection()
+        bluetooth.disconnect()
         connectionState = .disconnected
         latencyMs = nil
     }
@@ -110,6 +187,9 @@ final class ProjectorClient {
             } else if connectionState == .connected {
                 sendPing()
                 requestState()
+                if heartbeatTask == nil {
+                    startHeartbeat()
+                }
             }
         case .background:
             isForeground = false
@@ -122,7 +202,7 @@ final class ProjectorClient {
         }
     }
 
-    private func teardownConnection() {
+    private func teardownTCPConnection() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
         reconnectTask?.cancel()
@@ -138,8 +218,8 @@ final class ProjectorClient {
         ioQueue.async { buffer.reset() }
     }
 
-    private func openConnection() {
-        teardownConnection()
+    private func openTCPConnection() {
+        teardownTCPConnection()
 
         guard let port = NWEndpoint.Port(rawValue: tcpPort) else {
             lastError = "Porta inválida: \(tcpPort)"
@@ -171,15 +251,15 @@ final class ProjectorClient {
 
         conn.stateUpdateHandler = { [weak self] newState in
             Task { @MainActor [weak self] in
-                self?.handleStateChange(newState, for: currentID)
+                self?.handleTCPStateChange(newState, for: currentID)
             }
         }
 
         conn.start(queue: ioQueue)
     }
 
-    private func handleStateChange(_ state: NWConnection.State, for id: UUID) {
-        guard id == connectionID else { return }
+    private func handleTCPStateChange(_ state: NWConnection.State, for id: UUID) {
+        guard id == connectionID, activeTransport == .wifi else { return }
 
         switch state {
         case .ready:
@@ -228,8 +308,16 @@ final class ProjectorClient {
 
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            self?.openConnection()
+            guard !Task.isCancelled, let self else { return }
+            switch self.activeTransport {
+            case .wifi:
+                self.openTCPConnection()
+            case .bluetooth:
+                if let bleID = self.activeBluetoothID {
+                    self.connectionState = .reconnecting
+                    self.bluetooth.connect(peripheralID: bleID)
+                }
+            }
         }
     }
 
@@ -245,7 +333,7 @@ final class ProjectorClient {
         }
     }
 
-    // MARK: - Receive Loop
+    // MARK: - Receive Loop (TCP) + Unified NDJSON Parser (TCP & BLE)
 
     private func startReceiveLoop(for id: UUID) {
         guard let conn = connection else { return }
@@ -325,29 +413,49 @@ final class ProjectorClient {
         }
     }
 
-    // MARK: - Pipelined NDJSON Send
+    // MARK: - Unified Send Router (TCP NDJSON or BLE GATT)
+
+    func sendRawJSON(_ json: String) {
+        guard let data = json.data(using: .utf8), !data.isEmpty else { return }
+        sendRawData(data)
+    }
 
     private func sendPayload(_ payload: [String: Any]) {
-        guard let conn = connection, connectionState == .connected else {
-            if !isUserDisconnected && connectionState == .disconnected {
-                reconnectNow()
-            }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
             return
         }
+        sendRawData(data)
+    }
 
-        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            return
-        }
-        data.append(0x0A) // '\n' NDJSON terminator
-
-        // Fire-and-forget pipelined send: no ack wait for <5ms tactile response
-        conn.send(content: data, completion: .contentProcessed { [weak self] error in
-            if let error {
-                Task { @MainActor [weak self] in
-                    self?.lastError = error.localizedDescription
+    private func sendRawData(_ data: Data) {
+        switch activeTransport {
+        case .bluetooth:
+            guard bluetooth.isReady, connectionState == .connected else {
+                if !isUserDisconnected && connectionState == .disconnected {
+                    reconnectNow()
                 }
+                return
             }
-        })
+            bluetooth.send(data)
+
+        case .wifi:
+            guard let conn = connection, connectionState == .connected else {
+                if !isUserDisconnected && connectionState == .disconnected {
+                    reconnectNow()
+                }
+                return
+            }
+            var framed = data
+            framed.append(0x0A) // '\n' NDJSON terminator
+            // Fire-and-forget pipelined send: no ack wait for <5ms tactile response
+            conn.send(content: framed, completion: .contentProcessed { [weak self] error in
+                if let error {
+                    Task { @MainActor [weak self] in
+                        self?.lastError = error.localizedDescription
+                    }
+                }
+            })
+        }
     }
 
     // MARK: - High-Level Remote Commands

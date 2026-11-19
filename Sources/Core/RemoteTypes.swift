@@ -181,7 +181,32 @@ enum ConnectionState: Equatable, Sendable {
     }
 }
 
-// MARK: - Discovery Models
+// MARK: - Transport & Discovery Models
+
+enum ConnectionTransport: String, Sendable {
+    case wifi
+    case bluetooth
+
+    var label: String {
+        switch self {
+        case .wifi: return "Wi-Fi"
+        case .bluetooth: return "Bluetooth"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .wifi: return "wifi"
+        case .bluetooth: return "dot.radiowaves.left.and.right"
+        }
+    }
+}
+
+struct DiscoveredBluetoothProjector: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let name: String
+    let rssi: Int
+}
 
 enum DiscoverySource: String, Sendable {
     case bonjour = "Bonjour"
@@ -244,6 +269,8 @@ struct HUDMessage: Equatable, Identifiable, Sendable {
 enum RemoteStorage {
     static let lastHostKey = "hy300_last_host"
     static let padModeKey = "hy300_pad_mode"
+    static let lastBluetoothIDKey = "hy300_last_ble_id"
+    static let preferredTransportKey = "hy300_preferred_transport"
     static let defaultHost = "192.168.1.7"
 
     static func savedHost() -> String {
@@ -268,5 +295,28 @@ enum RemoteStorage {
 
     static func savePadMode(_ mode: PadMode) {
         UserDefaults.standard.set(mode.rawValue, forKey: padModeKey)
+    }
+
+    static func savedBluetoothPeripheralID() -> UUID? {
+        guard let raw = UserDefaults.standard.string(forKey: lastBluetoothIDKey) else {
+            return nil
+        }
+        return UUID(uuidString: raw)
+    }
+
+    static func saveBluetoothPeripheralID(_ id: UUID) {
+        UserDefaults.standard.set(id.uuidString, forKey: lastBluetoothIDKey)
+    }
+
+    static func savedPreferredTransport() -> ConnectionTransport {
+        guard let raw = UserDefaults.standard.string(forKey: preferredTransportKey),
+              let transport = ConnectionTransport(rawValue: raw) else {
+            return .wifi
+        }
+        return transport
+    }
+
+    static func savePreferredTransport(_ transport: ConnectionTransport) {
+        UserDefaults.standard.set(transport.rawValue, forKey: preferredTransportKey)
     }
 }

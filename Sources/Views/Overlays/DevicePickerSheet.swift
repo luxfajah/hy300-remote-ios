@@ -1,8 +1,9 @@
+import CoreBluetooth
 import SwiftUI
 
 /// Device picker and live connection diagnostics sheet:
-/// Displays active TCP NDJSON status, RTT latency, daemon state, resolution,
-/// Bonjour/UDP discovered projectors, and manual IP entry.
+/// Displays active Wi-Fi TCP or Bluetooth LE GATT status, RTT latency, daemon state,
+/// live Bluetooth LE scan (`A300`), Bonjour/UDP discovered Wi-Fi projectors, and manual IP entry.
 struct DevicePickerSheet: View {
     let client: ProjectorClient
     let discovery: BonjourDiscoveryService
@@ -18,7 +19,8 @@ struct DevicePickerSheet: View {
                 ScrollView {
                     VStack(spacing: 18) {
                         activeConnectionCard
-                        discoveredSection
+                        bluetoothSection
+                        wifiDiscoveredSection
                         manualConnectSection
                     }
                     .padding(18)
@@ -39,6 +41,10 @@ struct DevicePickerSheet: View {
         .onAppear {
             manualHost = client.host
             discovery.startScan()
+            client.bluetooth.startScan()
+        }
+        .onDisappear {
+            client.bluetooth.stopScan()
         }
     }
 
@@ -53,12 +59,37 @@ struct DevicePickerSheet: View {
                     .shadow(color: statusColor.opacity(0.6), radius: 4)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(client.deviceName)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DesignTokens.labelPrimary)
-                    Text("\(client.host):\(client.tcpPort)")
-                        .font(.system(size: 13, weight: .medium).monospacedDigit())
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                    HStack(spacing: 6) {
+                        Text(client.deviceName)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.labelPrimary)
+
+                        Label(client.activeTransport.label, systemImage: client.activeTransport.systemImage)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(
+                                client.activeTransport == .bluetooth
+                                    ? Color(red: 0.38, green: 0.68, blue: 1.0)
+                                    : DesignTokens.labelSecondary
+                            )
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        client.activeTransport == .bluetooth
+                                            ? Color.blue.opacity(0.18)
+                                            : Color.white.opacity(0.08)
+                                    )
+                            )
+                    }
+
+                    Text(
+                        client.activeTransport == .bluetooth
+                            ? "Bluetooth LE • Direto (GATT A300)"
+                            : "\(client.host):\(client.tcpPort)"
+                    )
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(DesignTokens.labelSecondary)
                 }
 
                 Spacer()
@@ -88,7 +119,7 @@ struct DevicePickerSheet: View {
                         : client.connectionState.label
                 )
                 telemetryCell(
-                    label: "Latência TCP",
+                    label: client.activeTransport == .bluetooth ? "Latência BLE" : "Latência TCP",
                     value: client.latencyMs.map { "\($0) ms" } ?? "—"
                 )
                 telemetryCell(
@@ -123,12 +154,144 @@ struct DevicePickerSheet: View {
         )
     }
 
-    // MARK: - Discovered Projectors (Bonjour + UDP 8092)
+    // MARK: - Bluetooth LE Direct Section
 
-    private var discoveredSection: some View {
+    private var bluetoothSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("ENCONTRADOS NA REDE")
+                Text("BLUETOOTH (DIRETO)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignTokens.labelTertiary)
+
+                Spacer()
+
+                Button {
+                    HapticEngine.shared.selection()
+                    if client.bluetooth.isScanning {
+                        client.bluetooth.stopScan()
+                    } else {
+                        client.bluetooth.startScan()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if client.bluetooth.isScanning {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "dot.radiowaves.left.and.right")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        Text(client.bluetooth.isScanning ? "Buscando…" : "Escanear")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(Color(red: 0.38, green: 0.68, blue: 1.0))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if client.bluetooth.bluetoothState != .poweredOn && client.bluetooth.discoveredPeripherals.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: bluetoothStatusIcon)
+                        .foregroundStyle(bluetoothStatusColor)
+                    Text(client.bluetooth.statusDescription)
+                        .font(.system(size: 13))
+                        .foregroundStyle(DesignTokens.labelSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .hyGlassRounded(cornerRadius: 18, interactive: false)
+            } else if client.bluetooth.discoveredPeripherals.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundStyle(Color(red: 0.38, green: 0.68, blue: 1.0).opacity(0.75))
+                    Text(client.bluetooth.isScanning
+                         ? "Procurando HY300Pro próximo via Bluetooth LE…"
+                         : "Nenhum projetor Bluetooth encontrado. Toque em Escanear.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(DesignTokens.labelSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .hyGlassRounded(cornerRadius: 18, interactive: false)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(client.bluetooth.discoveredPeripherals) { device in
+                        let isSelected = client.activeTransport == .bluetooth
+                            && client.bluetooth.connectedPeripheralID == device.id
+                            && client.connectionState.isConnected
+
+                        Button {
+                            HapticEngine.shared.tapMedium()
+                            client.connectBluetooth(peripheralID: device.id)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "dot.radiowaves.left.and.right")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(
+                                        isSelected
+                                            ? DesignTokens.statusAwake
+                                            : Color(red: 0.38, green: 0.68, blue: 1.0)
+                                    )
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(device.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.labelPrimary)
+                                    Text("Bluetooth LE • \(rssiLabel(device.rssi)) (\(device.rssi) dBm)")
+                                        .font(.system(size: 12).monospacedDigit())
+                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                }
+
+                                Spacer()
+
+                                if isSelected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(DesignTokens.statusAwake)
+                                } else {
+                                    Text("Conectar")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color(red: 0.38, green: 0.68, blue: 1.0))
+                                }
+                            }
+                            .padding(14)
+                        }
+                        .buttonStyle(.plain)
+                        .hyGlassRounded(cornerRadius: 18, interactive: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private var bluetoothStatusIcon: String {
+        switch client.bluetooth.bluetoothState {
+        case .poweredOff: return "antenna.radiowaves.left.and.right.slash"
+        case .unauthorized: return "lock.shield"
+        default: return "dot.radiowaves.left.and.right"
+        }
+    }
+
+    private var bluetoothStatusColor: Color {
+        switch client.bluetooth.bluetoothState {
+        case .poweredOff, .unauthorized: return DesignTokens.statusStandby
+        default: return DesignTokens.labelTertiary
+        }
+    }
+
+    private func rssiLabel(_ rssi: Int) -> String {
+        if rssi >= -60 { return "Sinal Forte" }
+        if rssi >= -75 { return "Sinal Bom" }
+        return "Sinal Fraco"
+    }
+
+    // MARK: - Discovered Wi-Fi Projectors (Bonjour + UDP 8092)
+
+    private var wifiDiscoveredSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("REDE WI-FI (BONJOUR / UDP)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(DesignTokens.labelTertiary)
 
@@ -160,8 +323,8 @@ struct DevicePickerSheet: View {
                     Image(systemName: "wifi")
                         .foregroundStyle(DesignTokens.labelTertiary)
                     Text(discovery.isScanning
-                         ? "Procurando projetores HY300 via Bonjour e UDP…"
-                         : "Nenhum projetor descoberto automaticamente.")
+                         ? "Procurando projetores HY300 na rede Wi-Fi…"
+                         : "Nenhum projetor descoberto automaticamente no Wi-Fi.")
                         .font(.system(size: 13))
                         .foregroundStyle(DesignTokens.labelSecondary)
                 }
@@ -171,7 +334,7 @@ struct DevicePickerSheet: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(discovery.discovered) { projector in
-                        let isSelected = projector.host == client.host
+                        let isSelected = client.activeTransport == .wifi && projector.host == client.host
                         Button {
                             HapticEngine.shared.tapMedium()
                             manualHost = projector.host

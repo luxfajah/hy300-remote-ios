@@ -39,8 +39,17 @@ struct RemoteTopBar: View {
                     HapticEngine.shared.selection()
                     onOpenDevicePicker()
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 7) {
                         statusDot
+                        if client.connectionState.isConnected {
+                            Image(systemName: client.activeTransport.systemImage)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(
+                                    client.activeTransport == .bluetooth
+                                        ? Color(red: 0.32, green: 0.64, blue: 1.0)
+                                        : DesignTokens.labelSecondary
+                                )
+                        }
                         Text(client.deviceName)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(DesignTokens.labelPrimary)
@@ -49,13 +58,13 @@ struct RemoteTopBar: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(DesignTokens.labelSecondary)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 15)
                     .frame(height: 40)
                 }
                 .buttonStyle(.plain)
                 .hyGlassCapsule(interactive: true)
-                .accessibilityLabel("Projetor \(client.deviceName), \(statusAccessibilityText)")
-                .accessibilityHint("Toque para trocar de projetor ou ver diagnósticos")
+                .accessibilityLabel("Projetor \(client.deviceName), \(statusAccessibilityText), via \(client.activeTransport.label)")
+                .accessibilityHint("Toque para trocar de projetor ou alternar entre Wi-Fi e Bluetooth")
 
                 Spacer(minLength: 4)
 

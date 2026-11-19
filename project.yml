@@ -17,6 +17,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: "HY300 Remote"
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Permite descobrir e controlar o projetor HY300Pro na sua rede Wi-Fi."
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Permite conectar e controlar o projetor HY300Pro via Bluetooth sem precisar de Wi-Fi."
         INFOPLIST_KEY_NSBonjourServices:
           - "_hy300remote._tcp"
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: YES
