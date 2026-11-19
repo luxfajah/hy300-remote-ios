@@ -46,6 +46,28 @@ struct OpenSmartTubeIntent: AppIntent {
     }
 }
 
+struct OpenURLOnProjectorIntent: AppIntent {
+    static var title: LocalizedStringResource = "Enviar Link para o Projetor"
+    static var description = IntentDescription("Abre um link do YouTube, Stremio, Twitch, Apple Music ou navegador diretamente no projetor HY300Pro.")
+
+    @Parameter(title: "Link ou URL")
+    var url: String
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let host = RemoteStorage.savedHost()
+        guard let endpoint = URL(string: "http://\(host):8090/api/open_url") else {
+            return .result(dialog: "IP do projetor não configurado.")
+        }
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": url])
+        req.timeoutInterval = 5
+        _ = try await URLSession.shared.data(for: req)
+        return .result(dialog: "Link enviado para o projetor.")
+    }
+}
+
 struct HY300Shortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

@@ -97,6 +97,16 @@ struct KeyboardOverlayView: View {
                             client.sendKey(.backspace, action: .tap)
                         }
 
+                        quickKeyButton(icon: "link", title: "Abrir Link") {
+                            let candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let target = candidate.isEmpty ? (UIPasteboard.general.string ?? "") : candidate
+                            if !target.isEmpty {
+                                HapticEngine.shared.tapMedium()
+                                client.openURL(target)
+                                dismiss()
+                            }
+                        }
+
                         quickKeyButton(icon: "return", title: "Enter") {
                             HapticEngine.shared.tapMedium()
                             client.sendKey(.enter, action: .tap)

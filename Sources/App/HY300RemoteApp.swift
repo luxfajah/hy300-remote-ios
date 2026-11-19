@@ -14,6 +14,13 @@ struct HY300RemoteApp: App {
                 updateService: updateService
             )
             .preferredColorScheme(.dark)
+            .onOpenURL { incoming in
+                if let comps = URLComponents(url: incoming, resolvingAgainstBaseURL: false),
+                   let target = comps.queryItems?.first(where: { $0.name == "url" || $0.name == "u" })?.value,
+                   !target.isEmpty {
+                    client.openURL(target)
+                }
+            }
         }
     }
 }

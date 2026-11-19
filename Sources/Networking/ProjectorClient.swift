@@ -647,6 +647,31 @@ final class ProjectorClient {
         showHUD(icon: "viewfinder", title: "Keystone Resetado")
     }
 
+    func openURL(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if isConnected {
+            sendPayload([
+                "t": "open_url",
+                "url": trimmed
+            ])
+        } else {
+            // Fallback HTTP POST /api/open_url
+            let targetHost = host
+            let port = httpPort
+            Task.detached {
+                guard let url = URL(string: "http://\(targetHost):\(port)/api/open_url") else { return }
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": trimmed])
+                req.timeoutInterval = 5
+                _ = try? await URLSession.shared.data(for: req)
+            }
+        }
+        showHUD(icon: "arrow.up.forward.app.fill", title: "Enviado ao Projetor", subtitle: trimmed)
+    }
+
     func requestState() {
         sendPayload(["t": "state"])
     }
