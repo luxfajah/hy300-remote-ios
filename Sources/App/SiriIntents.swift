@@ -1,7 +1,7 @@
 import AppIntents
 import Foundation
 
-/// Siri Voice Commands for HY300Pro Projector
+/// Siri Voice Commands for HY300Pro Projector — dynamically uses the saved/discovered IP.
 struct WakeProjectorIntent: AppIntent {
     static var title: LocalizedStringResource = "Ligar o Projetor"
     static var description = IntentDescription("Acorda o projetor HY300Pro do modo Standby.")
@@ -38,17 +38,31 @@ struct OpenUniTVIntent: AppIntent {
     }
 }
 
+struct OpenSmartTubeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Abrir SmartTube no Projetor"
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        try await callBridge("/api/app/smarttube")
+        return .result(dialog: "Abrindo SmartTube no projetor.")
+    }
+}
+
 struct HY300Shortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: WakeProjectorIntent(),
-            phrases: ["Ligar o projetor com \(.applicationName)", "Acordar projetor com \(.applicationName)"],
+            phrases: [
+                "Ligar o projetor com \(.applicationName)",
+                "Acordar projetor com \(.applicationName)"
+            ],
             shortTitle: "Ligar Projetor",
             systemImageName: "power"
         )
         AppShortcut(
             intent: StandbyProjectorIntent(),
-            phrases: ["Desligar o projetor com \(.applicationName)", "Standby no projetor com \(.applicationName)"],
+            phrases: [
+                "Desligar o projetor com \(.applicationName)",
+                "Standby no projetor com \(.applicationName)"
+            ],
             shortTitle: "Standby Projetor",
             systemImageName: "moon.zzz"
         )
@@ -64,12 +78,20 @@ struct HY300Shortcuts: AppShortcutsProvider {
             shortTitle: "Abrir UniTV",
             systemImageName: "tv"
         )
+        AppShortcut(
+            intent: OpenSmartTubeIntent(),
+            phrases: ["Abrir SmartTube no projetor com \(.applicationName)"],
+            shortTitle: "Abrir SmartTube",
+            systemImageName: "play.rectangle.fill"
+        )
     }
 }
 
 private func callBridge(_ path: String) async throws {
-    guard let url = URL(string: "http://192.168.1.7:8090" + path) else { return }
+    let host = RemoteStorage.savedHost()
+    guard let url = URL(string: "http://\(host):8090" + path) else { return }
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
+    req.timeoutInterval = 5
     _ = try await URLSession.shared.data(for: req)
 }
