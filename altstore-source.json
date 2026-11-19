@@ -1,0 +1,29 @@
+{
+  "name": "HY300 Remote",
+  "identifier": "com.hy300.remote.source",
+  "subtitle": "Controle Apple TV nativo para projetor HY300Pro (Wi-Fi + Bluetooth LE)",
+  "website": "https://github.com/luxfajah/hy300-remote-ios",
+  "tintColor": "#2D7FF9",
+  "apps": [
+    {
+      "name": "HY300 Remote",
+      "bundleIdentifier": "com.hy300.remote",
+      "developerName": "HY300Pro Cinema",
+      "subtitle": "Controle estilo Apple TV com Touchpad, Clickpad, Wi-Fi e Bluetooth LE",
+      "localizedDescription": "Controle remoto nativo em SwiftUI para projetor HY300Pro com conexão instantânea via Wi-Fi TCP e Bluetooth LE, dock dinâmica de aplicativos e limpeza de RAM.",
+      "tintColor": "#2D7FF9",
+      "versions": [
+        {
+          "version": "1.0.5",
+          "buildVersion": "5",
+          "date": "2026-11-19T08:32:47Z",
+          "localizedDescription": "Versão 1.0.5 — Atualização automática via GitHub Releases.",
+          "downloadURL": "https://github.com/luxfajah/hy300-remote-ios/releases/download/v1.0.5/HY300Remote.ipa",
+          "size": 537750,
+          "minOSVersion": "18.0"
+        }
+      ]
+    }
+  ],
+  "news": []
+}
