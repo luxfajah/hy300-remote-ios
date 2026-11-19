@@ -16,6 +16,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.hy300.remote
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "HY300 Remote"
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Permite controlar o projetor HY300Pro na sua rede Wi-Fi."
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: YES
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
