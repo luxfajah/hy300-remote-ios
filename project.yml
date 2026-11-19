@@ -9,9 +9,11 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hy300.remote
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "2.0.0"
         CURRENT_PROJECT_VERSION: "2"
         GENERATE_INFOPLIST_FILE: YES

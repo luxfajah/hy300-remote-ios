@@ -80,12 +80,14 @@ jobs:
           repo = os.environ["GITHUB_REPOSITORY"]
           now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
           download_url = f"https://github.com/{repo}/releases/download/v{version}/HY300Remote.ipa"
+          icon_url = f"https://raw.githubusercontent.com/{repo}/main/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 
           source = {
               "name": "HY300 Remote",
               "identifier": "com.hy300.remote.source",
               "subtitle": "Controle Apple TV nativo para projetor HY300Pro (Wi-Fi + Bluetooth LE)",
               "website": f"https://github.com/{repo}",
+              "iconURL": icon_url,
               "tintColor": "#2D7FF9",
               "apps": [
                   {
@@ -94,6 +96,7 @@ jobs:
                       "developerName": "HY300Pro Cinema",
                       "subtitle": "Controle estilo Apple TV com Touchpad, Clickpad, Wi-Fi e Bluetooth LE",
                       "localizedDescription": "Controle remoto nativo em SwiftUI para projetor HY300Pro com conexão instantânea via Wi-Fi TCP e Bluetooth LE, dock dinâmica de aplicativos e limpeza de RAM.",
+                      "iconURL": icon_url,
                       "tintColor": "#2D7FF9",
                       "versions": [
                           {
